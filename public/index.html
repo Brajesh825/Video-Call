@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calling Application</title>
+    <link rel="stylesheet" href="./style.css">
+</head>
+
+<body>
+    <h1>Video Calling App</h1>
+    <p>Your User ID: <span id="userId"></span></p>
+  <input id="userName" name="UserName" type="text"></input>
+    <video id="localVideo" autoplay></video>
+    <video id="remoteVideo" autoplay></video>
+    <button id="startCall">Start Call</button>
+    <button id="endCall">End Call</button>
+
+    <!-- Import the peer.js library from a CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.4.7/peerjs.min.js"
+        integrity="sha512-y23HV23IWVEWlGpIez8Kvr87ZT16V9gICf5dfqu5rjxs7ip66pcIf87/uFbxn9tStGCgohZeIktIAHg9fjubsw=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="./script.js"></script>
+</body>
+
+</html>
