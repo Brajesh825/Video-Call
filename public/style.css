@@ -38,6 +38,12 @@ video {
   border: 2px solid #444;
 }
 
+#localVideo {
+  width: 20vw;
+  height: 20vh;
+}
+
+
 button {
   display: block;
   margin: 20px auto;
