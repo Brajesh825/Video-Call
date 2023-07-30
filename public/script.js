@@ -25,7 +25,7 @@ userIdElement.innerText = userId
 
 
 const wsConfig = {
-  host: "audiocall.onrender.com",
+  host: "videocall-emn3.onrender.com",
   path: "/peerjs",
   secure: false
 }
