@@ -27,7 +27,7 @@ userIdElement.innerText = userId
 const wsConfig = {
   host: "videocall-emn3.onrender.com",
   path: "/peerjs",
-  secure: false
+  // secure: false
 }
 
 // Connect to the Peer server
