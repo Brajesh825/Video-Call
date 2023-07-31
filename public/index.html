@@ -1,21 +1,32 @@
 <!-- index.html -->
 <!DOCTYPE html>
 <html>
-<head>
-  <title>Video Call Application</title>
-</head>
-<body>
-  <h2>Your ID: <span id="userId"></span></h2>
-  <input type="text" id="userName" placeholder="Your Name" />
-  <button id="startCall">Start Call</button>
-  <button id="endCall">End Call</button>
-  <br />
-  <video id="localVideo" autoplay muted></video>
-  <div id="remoteVideos"></div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.4.7/peerjs.min.js"
-  integrity="sha512-y23HV23IWVEWlGpIez8Kvr87ZT16V9gICf5dfqu5rjxs7ip66pcIf87/uFbxn9tStGCgohZeIktIAHg9fjubsw=="
-  crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-  <script src="/script.js"></script>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Call Application</title>
+</head>
+<link rel="stylesheet" href="style.css">
+
+<body>
+
+    <div id="videoCallContainer">
+        <h2>Your ID: <span id="userId"></span></h2>
+        <input type="text" id="userName" placeholder="Your Name" />
+        <div id="callButtons">
+            <button id="startCall">Start Call</button>
+            <button id="endCall">End Call</button>
+        </div>
+        <br />
+        <video id="localVideo" autoplay muted></video>
+        <div id="remoteVideos"></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.4.7/peerjs.min.js"
+        integrity="sha512-y23HV23IWVEWlGpIez8Kvr87ZT16V9gICf5dfqu5rjxs7ip66pcIf87/uFbxn9tStGCgohZeIktIAHg9fjubsw=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="/script.js"></script>
 </body>
+
 </html>
