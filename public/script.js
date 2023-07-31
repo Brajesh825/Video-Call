@@ -1,131 +1,158 @@
 // script.js
-const localVideo = document.getElementById('localVideo');
-const remoteVideosContainer = document.getElementById('remoteVideos');
-const startCallBtn = document.getElementById('startCall');
-const endCallBtn = document.getElementById('endCall');
-const userIdElement = document.getElementById('userId');
-const userNameElement = document.getElementById('userName');
+class VideoCallApp {
+  constructor() {
+    this.localVideo = document.getElementById('localVideo');
+    this.remoteVideosContainer = document.getElementById('remoteVideos');
+    this.startCallBtn = document.getElementById('startCall');
+    this.endCallBtn = document.getElementById('endCall');
+    this.userIdElement = document.getElementById('userId');
+    this.userNameElement = document.getElementById('userName');
+    this.userName = null;
+    this.peer = null;
+    this.localStream = null;
+    this.connections = {};
+    this.remoteUserVideoIds = new Set();
+    this.initPeer();
+    this.setupEventListeners();
 
-let userName;
-userNameElement.onchange = (e) => {
-  userName = e.target.value;
-};
+  }
 
-let peer, localStream, connections = {};
+  generateUserId() {
+    const id = Math.random().toString(36).slice(2);
+    this.userIdElement.innerText = id;
+    return id;
+  }
 
-// Function to generate a random ID for the user
-function generateUserId() {
-  const id = Math.random().toString(36).slice(2);
-  userIdElement.innerText = id; // Update the element with the generated ID
-  return id;
-}
+  initPeer() {
+    const userId = this.generateUserId();
+    this.userIdElement.innerText = userId;
 
-// Generate a random ID for the user
-const userId = generateUserId();
-userIdElement.innerText = userId;
+    const wsConfig = {
+      host: "videocall-emn3.onrender.com",
+      path: "/peerjs",
+      secure: true
+    };
 
-const wsConfig = {
-  host: "videocall-emn3.onrender.com",
-  path: "/peerjs",
-  secure: true
-};
+    this.peer = new Peer(userId, wsConfig);
+    this.peer.on('open', (id) => {
+      console.log('Connected with ID:', id);
+    });
+  }
 
-// Connect to the Peer server
-peer = new Peer(userId, wsConfig);
+  setupEventListeners() {
+    this.userNameElement.onchange = (e) => {
+      this.userName = e.target.value;
+    };
 
-peer.on('open', (id) => {
-  console.log('Connected with ID:', id);
-});
+    this.startCallBtn.addEventListener('click', () => {
+      this.startCall();
+    });
 
-// Start a call with multiple users
-function startCall() {
-  navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-    .then((stream) => {
-      localVideo.srcObject = stream;
-      localStream = stream;
+    this.endCallBtn.addEventListener('click', () => {
+      this.endCall();
+    });
+
+    this.peer.on('call', (call) => {
+      this.handleIncomingCall(call);
+    });
+  }
+
+  async startCall() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      this.localVideo.srcObject = stream;
+      this.localStream = stream;
 
       const remoteUserIds = prompt('Enter the IDs of the people you want to call (comma-separated):');
       if (!remoteUserIds) return;
-
       const remoteUserIdArray = remoteUserIds.split(',');
 
       for (const remoteUserId of remoteUserIdArray) {
         if (remoteUserId.trim() === '') continue;
 
-        const metadata = {
-          callerUserName: userName,
-          callerType: "audio"
-        };
+        if (!this.connections[remoteUserId]) {
+          const metadata = {
+            callerUserName: this.userName,
+            callerType: "audio"
+          };
 
-        const connection = peer.call(remoteUserId, stream, { metadata });
-        connections[remoteUserId] = connection;
+          const connection = this.peer.call(remoteUserId, stream, { metadata });
+          console.log(connection);
+          this.connections[remoteUserId] = connection;
 
-        connection.on('stream', (remoteStream) => {
-          displayRemoteVideo(remoteUserId, remoteStream);
-        });
+          await new Promise((resolve, reject) => {
+            connection.on('stream', (remoteStream) => {
+              this.displayRemoteVideo(remoteUserId, remoteStream);
+              resolve();
+            });
+            connection.on('error', (err) => {
+              console.error('Error with peer connection:', err);
+              reject(err);
+            });
+          });
+        }
       }
-    })
-    .catch((error) => {
+    } catch (error) {
       console.error('Error accessing media devices:', error);
-    });
-}
-
-// End the call
-function endCall() {
-  Object.keys(connections).forEach((remoteUserId) => {
-    const connection = connections[remoteUserId];
-    if (connection) {
-      connection.close();
     }
-    delete connections[remoteUserId];
-  });
-
-  if (localStream) {
-    localStream.getTracks().forEach((track) => track.stop());
   }
 
-  remoteVideosContainer.innerHTML = '';
-  localVideo.srcObject = null;
-}
+  endCall() {
+    Object.keys(this.connections).forEach((remoteUserId) => {
+      const connection = this.connections[remoteUserId];
+      if (connection) {
+        connection.close();
+      }
+      delete this.connections[remoteUserId];
+    });
 
-function displayRemoteVideo(remoteUserId, stream) {
-  const remoteVideo = document.createElement('video');
-  remoteVideo.autoplay = true;
-  remoteVideo.srcObject = stream;
-  remoteVideosContainer.appendChild(remoteVideo);
-}
+    if (this.localStream) {
+      this.localStream.getTracks().forEach((track) => track.stop());
+    }
 
-// Start call when the "Start Call" button is clicked
-startCallBtn.addEventListener('click', () => {
-  startCall();
-});
+    this.remoteVideosContainer.innerHTML = '';
+    this.localVideo.srcObject = null;
+  }
 
-// End call when the "End Call" button is clicked
-endCallBtn.addEventListener('click', () => {
-  endCall();
-});
+  displayRemoteVideo(remoteUserId, stream) {
+    if (!this.remoteUserVideoIds.has(remoteUserId)) {
+      const remoteVideo = document.createElement('video');
+      remoteVideo.autoplay = true;
+      remoteVideo.srcObject = stream;
+      this.remoteVideosContainer.appendChild(remoteVideo);
+      this.remoteUserVideoIds.add(remoteUserId);
+    }
+  }
 
-// Listen for incoming calls
-peer.on('call', (call) => {
-  console.log("Incoming Video Call");
-  const remoteUserId = call.peer;
-  const callerName = call.metadata.callerUserName;
-  const answer = confirm(`Incoming Video Call From ${callerName}`);
-  if (answer) {
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-      .then((stream) => {
-        localVideo.srcObject = stream;
-        localStream = stream;
+  async handleIncomingCall(call) {
+    console.log("Incoming Video Call");
+    const remoteUserId = call.peer;
+    const callerName = call.metadata.callerUserName;
+    const answer = confirm(`Incoming Video Call From ${callerName}`);
+    if (answer) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        this.localVideo.srcObject = stream;
+        this.localStream = stream;
 
         call.answer(stream);
-        connections[remoteUserId] = call;
+        this.connections[remoteUserId] = call;
 
-        call.on('stream', (remoteStream) => {
-          displayRemoteVideo(remoteUserId, remoteStream);
+        await new Promise((resolve, reject) => {
+          call.on('stream', (remoteStream) => {
+            this.displayRemoteVideo(remoteUserId, remoteStream);
+            resolve();
+          });
+          call.on('error', (err) => {
+            console.error('Error with peer connection:', err);
+            reject(err);
+          });
         });
-      })
-      .catch((error) => {
+      } catch (error) {
         console.error('Error accessing media devices:', error);
-      });
+      }
+    }
   }
-});
+}
+
+const videoCallApp = new VideoCallApp();

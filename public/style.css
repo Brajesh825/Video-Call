@@ -32,7 +32,8 @@ h2 {
   border-radius: 10px;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
   width: 90%;
-  max-width: 1200px; /* Maximum width for desktop screens */
+  max-width: 1200px;
+  /* Maximum width for desktop screens */
 }
 
 input[type="text"] {
@@ -49,6 +50,7 @@ button {
   border: none;
   border-radius: 5px;
   cursor: pointer;
+  margin-right: 1rem;
 }
 
 video {
@@ -62,9 +64,12 @@ video {
 
 #localVideoContainer {
   width: 100%;
-  max-width: 600px; /* Maximum width for the local video container */
+  max-width: 600px;
+  /* Maximum width for the local video container */
   border-radius: 10px;
   overflow: hidden;
+  display: flex;
+  justify-content: center;
 }
 
 #localVideo {
@@ -84,8 +89,10 @@ video {
 .remote-video-container {
   position: relative;
   width: 100%;
-  padding-top: 56.25%; /* 16:9 aspect ratio for responsive video */
-  background-color: #000; /* Background color when the video is loading */
+  padding-top: 56.25%;
+  /* 16:9 aspect ratio for responsive video */
+  background-color: #000;
+  /* Background color when the video is loading */
   border-radius: 10px;
 }
 
@@ -96,6 +103,10 @@ video {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.mute-button.muted {
+  background-color: red;
 }
 
 /* Adjust grid layout for PC screens */
