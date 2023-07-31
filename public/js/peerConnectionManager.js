@@ -50,7 +50,6 @@ class PeerConnectionManager {
                     };
 
                     const connection = this.peer.call(remoteUserId, stream, { metadata });
-                    console.log(connection);
                     this.connections[remoteUserId] = connection;
 
                     await new Promise((resolve, reject) => {
@@ -79,9 +78,10 @@ class PeerConnectionManager {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                 call.answer(stream);
                 this.connections[remoteUserId] = call;
+                this.displayLocalVideo(stream)
 
                 call.on('stream', (remoteStream) => {
-                    this.displayRemoteVideo(remoteUserId, remoteStream);
+                    this.screenManager.addRemoteVideo(remoteUserId, remoteStream)
                 });
             } catch (error) {
                 console.error('Error accessing media devices:', error);
@@ -96,15 +96,7 @@ class PeerConnectionManager {
         });
         this.connections = {};
     }
-    // displayRemoteVideo(remoteUserId, stream) {
-    //     if (!this.remoteUserVideoIds.has(remoteUserId)) {
-    //         const remoteVideo = document.createElement('video');
-    //         remoteVideo.autoplay = true;
-    //         remoteVideo.srcObject = stream;
-    //         this.remoteVideoContainer.appendChild(remoteVideo);
-    //         this.remoteUserVideoIds.add(remoteUserId);
-    //     }
-    // }
+ 
     displayLocalVideo(stream) {
         this.localVideo.srcObject = stream;
         this.localStream = stream;
