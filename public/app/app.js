@@ -59,6 +59,7 @@ class Meeting {
         this.peer = this.peerConnectionManager.getPeer();
 
         this.peer.on('call', (call) => {
+
             this.handleIncomingCall(call);
         });
 
@@ -70,6 +71,8 @@ class Meeting {
     startGroupCall(recipientIds) {
         // Establish mesh connections with all recipients
         this.connectToPeers(recipientIds);
+
+        console.log("started outgoing call");
 
         // Start outgoing calls to all recipients
         recipientIds.forEach((recipientId) => {
@@ -84,6 +87,9 @@ class Meeting {
     }
 
     connectToPeers(peerIds) {
+
+        this.initLocalVideo()
+
         peerIds.forEach((peerId) => {
             if (peerId !== this.peer.id && !this.connections[peerId]) {
                 this.connections[peerId] = this.peer.connect(peerId, {
@@ -145,6 +151,9 @@ class Meeting {
     }
 
     handleIncomingCall(call) {
+
+        console.log("incoming call");
+
         // Answer the incoming call and send local stream
         const connectedRecipients = Object.keys(this.connectedCalls);
         const isCallerConnected = connectedRecipients.includes(call.peer);
