@@ -159,122 +159,133 @@ class Meeting {
     handleIncomingCall(call) {
         const callerId = call.peer;
         const recipientIds = call.metadata.recipients;
-      
+
         // Check if the local stream exists
         if (!this.localStream) {
-          // Local stream does not exist, create one and prompt the user
-          navigator.mediaDevices
-            .getUserMedia({ video: true, audio: true })
-            .then((localStream) => {
-              this.localStream = localStream; // Store the local stream
-              this.localVideo.srcObject = localStream;
-      
-              // Check if the caller is in the active recipients list
-              const isNewCaller = !this.activeRecipients.includes(callerId);
-      
-              // Prompt the user if the caller is not in the active recipients list
-              if (isNewCaller) {
+            // Local stream does not exist, prompt the user for permission to access media devices
+            const confirmMediaAccess = window.confirm(
+                "Allow access to your camera and microphone for the incoming call?"
+            );
+
+            if (!confirmMediaAccess) {
+                // Reject the call
+                call.close();
+                return;
+            }
+
+            // Request access to media devices
+            navigator.mediaDevices
+                .getUserMedia({ video: true, audio: true })
+                .then((localStream) => {
+                    this.localStream = localStream; // Store the local stream
+                    this.localVideo.srcObject = localStream;
+
+                    // Check if the caller is in the active recipients list
+                    const isNewCaller = !this.activeRecipients.includes(callerId);
+
+                    // Prompt the user if the caller is not in the active recipients list
+                    if (isNewCaller) {
+                        const confirmCall = window.confirm(
+                            "Incoming call from a new caller. Do you want to accept the call?"
+                        );
+
+                        if (!confirmCall) {
+                            // Reject the call and close the local stream
+                            call.close();
+                            this.localStream.getTracks().forEach((track) => {
+                                track.stop();
+                            });
+                            this.localStream = null;
+                            return;
+                        }
+
+                        // Add the caller to the active recipients list
+                        this.activeRecipients.push(callerId);
+                    }
+
+                    // Answer the incoming call with the local stream
+                    call.answer(localStream);
+
+                    // Broadcast to all recipients in metadata, including the caller and existing recipients
+                    this.broadcastLocalStream(recipientIds, localStream);
+
+                    // Add event listeners to handle the incoming call
+                    call.on("stream", (remoteStream) => {
+                        // Handle the remote stream and add it to the video grid
+                        const remoteVideoElement = this.createVideoElement(remoteStream);
+                        const remoteVideoContainer = this.createVideoElementContainer(
+                            remoteVideoElement,
+                            callerId
+                        );
+                        this.addVideoStream(remoteVideoContainer);
+                    });
+
+                    call.on("close", () => {
+                        // Handle the call when it is closed (e.g., remote user hung up)
+                        // Remove the video element associated with the call
+                        const remoteVideoElement = document.getElementById(callerId);
+                        if (remoteVideoElement) {
+                            this.videoGrid.removeChild(remoteVideoElement.parentNode);
+                        }
+
+                        // Close the local stream once the call ends
+                        this.localStream.getTracks().forEach((track) => {
+                            track.stop();
+                        });
+                        this.localStream = null;
+                    });
+                })
+                .catch((error) => {
+                    console.error("Error accessing local media:", error);
+                });
+        } else {
+            // Local stream already exists, answer the incoming call and broadcast to recipients
+            call.answer(this.localStream);
+
+            // Check if the caller is in the active recipients list
+            const isNewCaller = !this.activeRecipients.includes(callerId);
+
+            // Prompt the user if the caller is not in the active recipients list
+            if (isNewCaller) {
                 const confirmCall = window.confirm(
-                  "Incoming call from a new caller. Do you want to accept the call?"
+                    "Incoming call from a new caller. Do you want to accept the call?"
                 );
-      
+
                 if (!confirmCall) {
-                  // Reject the call and close the local stream
-                  call.close();
-                  this.localStream.getTracks().forEach((track) => {
-                    track.stop();
-                  });
-                  this.localStream = null;
-                  return;
+                    // Reject the call
+                    call.close();
+                    return;
                 }
-      
+
                 // Add the caller to the active recipients list
                 this.activeRecipients.push(callerId);
-              }
-      
-              // Answer the incoming call with the local stream
-              call.answer(localStream);
-      
-              // Broadcast to all recipients in metadata, including the caller and existing recipients
-              this.broadcastLocalStream(recipientIds, localStream);
-      
-              // Add event listeners to handle the incoming call
-              call.on("stream", (remoteStream) => {
+            }
+
+            // Broadcast to all recipients in metadata, including the caller and existing recipients
+            this.broadcastLocalStream(recipientIds, this.localStream);
+
+            // Add event listeners to handle the incoming call
+            call.on("stream", (remoteStream) => {
                 // Handle the remote stream and add it to the video grid
                 const remoteVideoElement = this.createVideoElement(remoteStream);
                 const remoteVideoContainer = this.createVideoElementContainer(
-                  remoteVideoElement,
-                  callerId
+                    remoteVideoElement,
+                    callerId
                 );
                 this.addVideoStream(remoteVideoContainer);
-              });
-      
-              call.on("close", () => {
+            });
+
+            call.on("close", () => {
                 // Handle the call when it is closed (e.g., remote user hung up)
                 // Remove the video element associated with the call
                 const remoteVideoElement = document.getElementById(callerId);
                 if (remoteVideoElement) {
-                  this.videoGrid.removeChild(remoteVideoElement.parentNode);
+                    this.videoGrid.removeChild(remoteVideoElement.parentNode);
                 }
-      
-                // Close the local stream once the call ends
-                this.localStream.getTracks().forEach((track) => {
-                  track.stop();
-                });
-                this.localStream = null;
-              });
-            })
-            .catch((error) => {
-              console.error("Error accessing local media:", error);
             });
-        } else {
-          // Local stream already exists, answer the incoming call and broadcast to recipients
-          call.answer(this.localStream);
-      
-          // Check if the caller is in the active recipients list
-          const isNewCaller = !this.activeRecipients.includes(callerId);
-      
-          // Prompt the user if the caller is not in the active recipients list
-          if (isNewCaller) {
-            const confirmCall = window.confirm(
-              "Incoming call from a new caller. Do you want to accept the call?"
-            );
-      
-            if (!confirmCall) {
-              // Reject the call
-              call.close();
-              return;
-            }
-      
-            // Add the caller to the active recipients list
-            this.activeRecipients.push(callerId);
-          }
-      
-          // Broadcast to all recipients in metadata, including the caller and existing recipients
-          this.broadcastLocalStream(recipientIds, this.localStream);
-      
-          // Add event listeners to handle the incoming call
-          call.on("stream", (remoteStream) => {
-            // Handle the remote stream and add it to the video grid
-            const remoteVideoElement = this.createVideoElement(remoteStream);
-            const remoteVideoContainer = this.createVideoElementContainer(
-              remoteVideoElement,
-              callerId
-            );
-            this.addVideoStream(remoteVideoContainer);
-          });
-      
-          call.on("close", () => {
-            // Handle the call when it is closed (e.g., remote user hung up)
-            // Remove the video element associated with the call
-            const remoteVideoElement = document.getElementById(callerId);
-            if (remoteVideoElement) {
-              this.videoGrid.removeChild(remoteVideoElement.parentNode);
-            }
-          });
         }
-      }
-      
+    }
+
 
     broadcastLocalStream(recipientIds, localStream) {
         recipientIds.forEach((recipientId) => {
