@@ -63,7 +63,8 @@ class Meeting {
         });
 
         this.connections = {}
-        this.isLocalVideoEnabled = true; 
+        this.isLocalVideoEnabled = true;
+        this.connectedCalls = {};
     }
     // VideoCall Section
     startGroupCall(recipientIds) {
@@ -72,10 +73,13 @@ class Meeting {
 
         // Start outgoing calls to all recipients
         recipientIds.forEach((recipientId) => {
-            const call = this.peer.call(recipientId, this.localStream, {
-                metadata: { recipients: recipientIds },
-            });
-            this.handleOutgoingCall(call, recipientIds);
+            // Check if the recipient is not in the list of connected calls
+            if (!this.connectedCalls[recipientId]) {
+                const call = this.peer.call(recipientId, this.localStream, {
+                    metadata: { recipients: recipientIds },
+                });
+                this.handleOutgoingCall(call, recipientIds);
+            }
         });
     }
 
@@ -90,6 +94,15 @@ class Meeting {
                     console.log("Connected to peer:", peerId);
                 });
                 this.handleDataConnection(this.connections[peerId]);
+                this.connections[peerId].on("close", () => {
+                    console.log("Data connection closed");
+                    // Handle data connection closed event
+
+                    // Remove the call from the connected calls list
+                    if (this.connectedCalls[peerId]) {
+                        delete this.connectedCalls[peerId];
+                    }
+                });
             }
         });
     }
@@ -133,9 +146,32 @@ class Meeting {
 
     handleIncomingCall(call) {
         // Answer the incoming call and send local stream
+        const connectedRecipients = Object.keys(this.connectedCalls);
+        const isCallerConnected = connectedRecipients.includes(call.peer);
+
+        // Prompt for incoming call if the caller is not connected
+        if (!isCallerConnected) {
+            const confirmIncomingCall = confirm(`Incoming call from ${call.peer}. Do you want to accept?`);
+            if (!confirmIncomingCall) {
+                // Reject the call if the user declines
+                call.close();
+                return;
+            }
+        }
+
+        // Answer the incoming call and send local stream
         call.answer(this.localStream);
 
-        // broadcast to all
+        // Broadcast the call to all connected recipients
+        connectedRecipients.forEach((recipientId) => {
+            // Skip broadcasting the call to the caller itself
+            if (recipientId !== call.peer) {
+                const connectedCall = this.connectedCalls[recipientId];
+                if (connectedCall) {
+                    connectedCall.answer(this.localStream);
+                }
+            }
+        });
 
         // Add event listeners to handle the incoming call
         call.on("stream", (remoteStream) => {
@@ -146,7 +182,6 @@ class Meeting {
                 call.peer // The user ID of the remote caller
             );
             this.addVideoStream(remoteVideoContainer);
-
         });
 
         call.on("close", () => {
@@ -156,10 +191,16 @@ class Meeting {
             if (remoteVideoElement) {
                 this.videoGrid.removeChild(remoteVideoElement.parentNode);
             }
+
+            // Remove the call from the connected calls list
+            delete this.connectedCalls[call.peer];
         });
 
         // Send the list of all recipients in metadata
         call.metadata = { recipients: call.metadata.recipients };
+
+        // Add the call to the connected calls list
+        this.connectedCalls[call.peer] = call;
     }
 
     // Chat Section
@@ -549,15 +590,13 @@ class Meeting {
     }
     stopScreenShare() {
         if (this.screenStream) {
-            if(this.localStream){
+            if (this.localStream) {
 
                 this.localStream.getTracks().forEach(track => track.stop());
-            this.localStream = null; // Clear the screen stream
-            this.localStream.srcObject = null;
-            this.isSharingScreen = false; // Update the flag
-                }
-        
-
+                this.localStream = null; // Clear the screen stream
+                this.localStream.srcObject = null;
+                this.isSharingScreen = false; // Update the flag
+            }
             // Turn on the camera if it was on before sharing the screen
             if (this.isLocalVideoEnabled) {
                 this.initLocalVideo();
