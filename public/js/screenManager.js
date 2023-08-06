@@ -5,11 +5,7 @@ class ScreenManager {
         this.setupLayout();
     }
 
-    setupLayout() {
-        // this.container.style.display = 'grid';
-        // this.container.style.gridTemplateColumns = 'repeat(auto-fit, minmax(200px, 1fr))';
-        // this.container.style.gridGap = '10px';
-    }
+    setupLayout() { }
 
     addRemoteVideo(remoteUserId, stream) {
         if (!this.remoteVideos.has(remoteUserId)) {

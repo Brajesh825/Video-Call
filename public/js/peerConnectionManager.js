@@ -96,7 +96,7 @@ class PeerConnectionManager {
         });
         this.connections = {};
     }
- 
+
     displayLocalVideo(stream) {
         this.localVideo.srcObject = stream;
         this.localStream = stream;

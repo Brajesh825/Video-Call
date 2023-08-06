@@ -1,0 +1,13 @@
+:root {
+    --primary-bg-color: #121212; /* Dark background */
+    --secondary-bg-color: #1e1e1e; /* Darker background */
+    --tertiary-bg-color: #424242; /* Darker input background */
+    --primary-text-color: #ffffff; /* White text color */
+    --secondary-text-color: #757575; /* Gray text color */
+    --primary-button-color: #2962ff; /* Blue primary color */
+    --secondary-button-color: #757575; /* Gray color for the "Close" button */
+    --hover-button-color: #0039cb; /* Darker shade of blue on hover */
+    --green-button-color: #00c853; /* Green color for the "Add Recipient" button */
+    --hover-green-button-color: #00a74d; /* Darker shade of green on hover */
+  }
+  
