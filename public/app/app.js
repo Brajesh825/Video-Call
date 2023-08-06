@@ -65,22 +65,22 @@ class Meeting {
 
         this.connections = {}
         this.remoteUserVideoIds = new Set();
+        this.remoteUserScreenIds = new Set();
 
     }
     // VideoCall Section
     startGroupCall(recipientIds) {
-        // Establish mesh connections with all recipients
-        this.connectToPeers(recipientIds);
+        // ... (previous code)
 
-        // Start outgoing calls to all recipients
+        // Call each recipient using a mesh topology
         recipientIds.forEach((recipientId) => {
-            const call = this.peer.call(recipientId, this.localStream, {
-                metadata: { recipients: recipientIds },
-            });
-
-            console.log(call);
-
-            this.handleOutgoingCall(call, recipientIds);
+            if (recipientId !== this.peer.id) {
+                const call = this.peer.call(recipientId, this.localStream, {
+                    metadata: { recipients: [...this.remoteUserVideoIds] },
+                    scope: 'videoCall'
+                });
+                this.setupCallListeners(call, recipientId);
+            }
         });
     }
 
@@ -98,7 +98,6 @@ class Meeting {
             }
         });
     }
-
     handleDataConnection(connection) {
         connection.on("data", (data) => {
             console.log("Received data:", data);
@@ -135,7 +134,6 @@ class Meeting {
         // Send the list of all recipients in metadata
         call.metadata = { recipients: recipientIds };
     }
-
     async handleIncomingCall(call) {
         // Show a confirmation dialog to the user
         const shouldAcceptCall = window.confirm("Incoming call from " + call.peer + ". Do you want to accept?");
@@ -565,58 +563,55 @@ class Meeting {
             track.enabled = !track.enabled; // toggle video tracks only
         });
     }
-    async toggleScreenShare() {
+    
+    toggleScreenShare() {
         if (this.isSharingScreen) {
-            // Stop sharing the screen
-            this.stopScreenShare();
+          this.stopScreenShare();
         } else {
-            // Check if the user has already started sharing their video
-            let shouldShareVideo = true;
-            if (this.localStream) {
-                shouldShareVideo = confirm("Do you want to share your video along with the screen?");
-            }
-
-            try {
-                // Get access to the screen stream
-                this.screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: shouldShareVideo });
-
-                // Replace the local video stream with the screen stream
-                if (this.localStream && shouldShareVideo) {
-                    this.localStream.getTracks().forEach(track => track.stop());
-                }
-
-                // Update the local video with the screen stream
-                this.localVideo.srcObject = this.screenStream;
-                this.localStream = this.screenStream;
-
-                // Share the screen stream with all connected peers
-                for (const peerId in this.connections) {
-                    const peerConnection = this.connections[peerId];
-                    const call = peerConnection.call(peerId, this.localStream, { metadata: { recipients: [...this.remoteUserVideoIds] } });
-                    this.setupCallListeners(call, peerId);
-                }
-
-                this.isSharingScreen = true; // Update the flag
-            } catch (error) {
-                console.error("Error sharing screen:", error);
-            }
+          this.shareScreen();
         }
-    }
+      }
 
     async shareScreen() {
         try {
             this.screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
             this.screenVideo.srcObject = this.screenStream;
 
-            this.screenStream.getTracks()[0].onended = () => {
-                this.stopScreenShare();
-            };
+            // Replace the following line to initiate a call for screen sharing
+            const recipientIds = [...this.remoteUserVideoIds];
+            for (const peerId of recipientIds) {
+                const call = this.peer.call(peerId, this.screenStream, { metadata: { scope: 'screenShare' } });
+                this.handleCall(call);
+            }
 
             this.isSharingScreen = true; // Update the flag
         } catch (error) {
             console.error('Error sharing screen:', error);
         }
     }
+
+    async startScreenShare() {
+        try {
+            this.screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+            // Add the screen stream to the main screen with scope 'screenShare'
+            this.addRemoteVideoStream(this.screenStream, 'ScreenShare');
+            this.isSharingScreen = true;
+
+            // Call each recipient using a mesh topology
+            this.remoteUserVideoIds.forEach((recipientId) => {
+                const call = this.peer.call(recipientId, this.screenStream, {
+                    metadata: { recipients: [...this.remoteUserVideoIds] },
+                    scope: 'screenShare'
+                });
+                this.setupCallListeners(call, recipientId);
+            });
+        } catch (error) {
+            console.error('Error sharing screen:', error);
+        }
+    }
+
+
+
     stopScreenShare() {
         if (this.screenStream) {
             this.screenStream.getTracks().forEach(track => track.stop());
@@ -627,9 +622,17 @@ class Meeting {
     }
 
     setupCallListeners(call, peerId) {
-        call.on("stream", (remoteStream) => {
-            // When the remote stream is received, add it to the video grid
-            this.addRemoteVideoStream(remoteStream, peerId);
+        call.on('stream', (stream) => {
+            // Check the scope of the call to determine if it's for screen sharing or video call
+            const scope = call.metadata.scope;
+
+            if (scope === 'screenShare') {
+                // Handle incoming screen sharing call
+                this.handleScreenShareCall(call, peerId, stream);
+            } else {
+                // Handle incoming video call
+                this.handleVideoCall(call, peerId, stream);
+            }
         });
 
         call.on("close", () => {
@@ -641,6 +644,34 @@ class Meeting {
             console.error("Call error:", error);
         });
     }
+
+    handleScreenShareCall(call, peerId, stream) {
+        // Add the screen sharing stream to the main screen
+        this.addRemoteVideoStream(stream, 'ScreenShare');
+
+        // Handle the call accepted confirmation
+        const isAccepted = window.confirm(`Incoming screen sharing call from user ${peerId}. Do you want to accept?`);
+
+        if (isAccepted) {
+            // Stop the previous screen stream if it's already being shared
+            if (this.isSharingScreen) {
+                this.stopScreenShare();
+            }
+
+            // Start screen sharing
+            this.screenStream = stream;
+            this.isSharingScreen = true;
+            // Add the screen stream to the main screen with scope 'screenShare'
+            this.addRemoteVideoStream(stream, 'ScreenShare');
+
+            // Answer the call with the local screen stream
+            call.answer();
+        } else {
+            // Reject the call
+            call.close();
+        }
+    }
+
 
     addRemoteVideoStream(remoteStream, peerId) {
         if (!this.remoteUserVideoIds.has(peerId)) {
