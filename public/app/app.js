@@ -78,14 +78,6 @@ class Meeting {
                     this.localVideo.srcObject = localStream
                     // Establish mesh connections with all recipients
                     this.connectToPeers(recipientIds);
-
-                    // Start outgoing calls to all recipients
-                    recipientIds.forEach((recipientId) => {
-                        const call = this.peer.call(recipientId, localStream, {
-                            metadata: { recipients: recipientIds },
-                        });
-                        this.handleOutgoingCall(call, recipientIds);
-                    });
                 })
                 .catch((error) => {
                     console.error("Error accessing local media:", error);
@@ -104,7 +96,7 @@ class Meeting {
         }
     }
 
-    connectToPeers(peerIds) {
+    connectToPeers(peerIds, localStream) {
         peerIds.forEach((peerId) => {
             if (peerId !== this.peer.id && !this.connections[peerId] && peerId != this.userId) {
                 this.connections[peerId] = this.peer.connect(peerId, {
@@ -114,6 +106,12 @@ class Meeting {
                 this.connections[peerId].on("open", () => {
                     console.log("Connected to peer:", peerId);
                 });
+
+                const call = this.peer.call(peerId, localStream, {
+                    metadata: { recipients: recipientIds },
+                });
+
+                this.handleOutgoingCall(call, recipientIds);
                 this.handleDataConnection(this.connections[peerId]);
             }
         });
