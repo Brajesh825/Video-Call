@@ -135,6 +135,8 @@ class Meeting {
         // Answer the incoming call and send local stream
         call.answer(this.localStream);
 
+        // broadcast to all
+
         // Add event listeners to handle the incoming call
         call.on("stream", (remoteStream) => {
             // Handle the remote stream and add it to the video grid
@@ -144,6 +146,7 @@ class Meeting {
                 call.peer // The user ID of the remote caller
             );
             this.addVideoStream(remoteVideoContainer);
+
         });
 
         call.on("close", () => {
@@ -423,14 +426,6 @@ class Meeting {
             const videoContainer = this.createVideoElementContainer(this.localVideo, this.userId)
             this.videoGrid.appendChild(videoContainer);
         }
-        if (!this.screenVideo) {
-            this.screenVideo = this.createVideoElement();
-            this.screenVideo.classList.add('screen-video');
-            this.screenVideo.classList.add('video-stream');
-            const videoContainer = this.createVideoElementContainer(this.screenVideo, this.userId)
-            this.videoGrid.appendChild(videoContainer);
-        }
-
     }
     initLocalVideo() {
         // Check if the browser supports getUserMedia
@@ -554,10 +549,14 @@ class Meeting {
     }
     stopScreenShare() {
         if (this.screenStream) {
-            this.screenStream.getTracks().forEach(track => track.stop());
-            this.screenStream = null; // Clear the screen stream
-            this.screenVideo.srcObject = null;
+            if(this.localStream){
+
+                this.localStream.getTracks().forEach(track => track.stop());
+            this.localStream = null; // Clear the screen stream
+            this.localStream.srcObject = null;
             this.isSharingScreen = false; // Update the flag
+                }
+        
 
             // Turn on the camera if it was on before sharing the screen
             if (this.isLocalVideoEnabled) {
