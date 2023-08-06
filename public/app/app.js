@@ -59,10 +59,13 @@ class Meeting {
         this.peer = this.peerConnectionManager.getPeer();
 
         this.peer.on('call', (call) => {
+            console.log("incoming call");
             this.handleIncomingCall(call);
         });
 
         this.connections = {}
+        this.remoteUserVideoIds = new Set();
+
     }
     // VideoCall Section
     startGroupCall(recipientIds) {
@@ -133,33 +136,61 @@ class Meeting {
         call.metadata = { recipients: recipientIds };
     }
 
-    handleIncomingCall(call) {
-        // Answer the incoming call and send local stream
-        call.answer(this.localStream);
+    async handleIncomingCall(call) {
+        // Show a confirmation dialog to the user
+        const shouldAcceptCall = window.confirm("Incoming call from " + call.peer + ". Do you want to accept?");
 
-        // Add event listeners to handle the incoming call
-        call.on("stream", (remoteStream) => {
-            // Handle the remote stream and add it to the video grid
-            const remoteVideoElement = this.createVideoElement(remoteStream);
-            const remoteVideoContainer = this.createVideoElementContainer(
-                remoteVideoElement,
-                call.peer // The user ID of the remote caller
-            );
-            this.addVideoStream(remoteVideoContainer);
-        });
-
-        call.on("close", () => {
-            // Handle the call when it is closed (e.g., remote user hung up)
-            // Remove the video element associated with the call
-            const remoteVideoElement = document.getElementById(call.peer);
-            if (remoteVideoElement) {
-                this.videoGrid.removeChild(remoteVideoElement.parentNode);
+        if (shouldAcceptCall) {
+            // Get the local stream first (if not already available)
+            if (!this.localStream) {
+                try {
+                    this.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                    this.localVideo.srcObject = this.localStream;
+                } catch (error) {
+                    console.error("Error accessing webcam and/or microphone:", error);
+                    return;
+                }
             }
-        });
 
-        // Send the list of all recipients in metadata
-        call.metadata = { recipients: call.metadata.recipients };
+            // Answer the incoming call and send the local stream
+            call.answer(this.localStream);
+
+            // Add event listeners to handle the incoming call
+            call.on("stream", (remoteStream) => {
+                // Handle the remote stream and add it to the video grid
+                const remoteVideoElement = this.createVideoElement(remoteStream);
+                const remoteVideoContainer = this.createVideoElementContainer(
+                    remoteVideoElement,
+                    call.peer // The user ID of the remote caller
+                );
+                this.addVideoStream(remoteVideoContainer);
+            });
+
+            call.on("close", () => {
+                // Handle the call when it is closed (e.g., remote user hung up)
+                // Remove the video element associated with the call
+                const remoteVideoElement = document.getElementById(call.peer);
+                if (remoteVideoElement) {
+                    this.videoGrid.removeChild(remoteVideoElement.parentNode);
+                }
+            });
+
+            // Send the list of all recipients in metadata
+            call.metadata = { recipients: call.metadata.recipients };
+
+            // Start the local stream and show it on the main screen
+            const localVideoContainer = this.createVideoElementContainer(
+                this.localVideo,
+                "You" // Use "You" as the username for local video
+            );
+            localVideoContainer.classList.add("main-video-container");
+            this.mainScreen.appendChild(localVideoContainer);
+        } else {
+            // If the user declines the call, close the call
+            call.close();
+        }
     }
+
 
     // Chat Section
     addSampleChatMessages() {
@@ -536,11 +567,42 @@ class Meeting {
     }
     async toggleScreenShare() {
         if (this.isSharingScreen) {
+            // Stop sharing the screen
             this.stopScreenShare();
         } else {
-            await this.shareScreen();
+            // Check if the user has already started sharing their video
+            let shouldShareVideo = true;
+            if (this.localStream) {
+                shouldShareVideo = confirm("Do you want to share your video along with the screen?");
+            }
+
+            try {
+                // Get access to the screen stream
+                this.screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: shouldShareVideo });
+
+                // Replace the local video stream with the screen stream
+                if (this.localStream && shouldShareVideo) {
+                    this.localStream.getTracks().forEach(track => track.stop());
+                }
+
+                // Update the local video with the screen stream
+                this.localVideo.srcObject = this.screenStream;
+                this.localStream = this.screenStream;
+
+                // Share the screen stream with all connected peers
+                for (const peerId in this.connections) {
+                    const peerConnection = this.connections[peerId];
+                    const call = peerConnection.call(peerId, this.localStream, { metadata: { recipients: [...this.remoteUserVideoIds] } });
+                    this.setupCallListeners(call, peerId);
+                }
+
+                this.isSharingScreen = true; // Update the flag
+            } catch (error) {
+                console.error("Error sharing screen:", error);
+            }
         }
     }
+
     async shareScreen() {
         try {
             this.screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
@@ -563,6 +625,55 @@ class Meeting {
             this.isSharingScreen = false; // Update the flag
         }
     }
+
+    setupCallListeners(call, peerId) {
+        call.on("stream", (remoteStream) => {
+            // When the remote stream is received, add it to the video grid
+            this.addRemoteVideoStream(remoteStream, peerId);
+        });
+
+        call.on("close", () => {
+            // When the call is closed, remove the remote video from the video grid
+            this.removeRemoteVideoStream(peerId);
+        });
+
+        call.on("error", (error) => {
+            console.error("Call error:", error);
+        });
+    }
+
+    addRemoteVideoStream(remoteStream, peerId) {
+        if (!this.remoteUserVideoIds.has(peerId)) {
+            // Add the new peer to the set of remote users
+            this.remoteUserVideoIds.add(peerId);
+
+            // Create a new video element for the remote stream
+            const remoteVideo = this.createVideoElement(remoteStream, `remote-video-${peerId}`);
+            remoteVideo.classList.add("remote-video");
+            const videoContainer = this.createVideoElementContainer(remoteVideo, peerId);
+            this.videoGrid.appendChild(videoContainer);
+
+            // Play the remote video stream
+            remoteVideo.addEventListener("loadedmetadata", () => {
+                remoteVideo.play();
+            });
+        }
+    }
+
+    removeRemoteVideoStream(peerId) {
+        if (this.remoteUserVideoIds.has(peerId)) {
+            // Remove the peer from the set of remote users
+            this.remoteUserVideoIds.delete(peerId);
+
+            // Remove the remote video element from the video grid
+            const remoteVideo = document.getElementById(`remote-video-${peerId}`);
+            if (remoteVideo) {
+                const videoContainer = remoteVideo.parentElement;
+                this.videoGrid.removeChild(videoContainer);
+            }
+        }
+    }
+
 
 }
 
