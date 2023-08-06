@@ -59,37 +59,28 @@ class Meeting {
         this.peer = this.peerConnectionManager.getPeer();
 
         this.peer.on('call', (call) => {
-
             this.handleIncomingCall(call);
         });
 
         this.connections = {}
-        this.isLocalVideoEnabled = true;
-        this.connectedCalls = {};
+        this.activeRecipients = new Set();
+        this.connectedPeers = new Set();
     }
     // VideoCall Section
     startGroupCall(recipientIds) {
         // Establish mesh connections with all recipients
         this.connectToPeers(recipientIds);
 
-        console.log("started outgoing call");
-
         // Start outgoing calls to all recipients
         recipientIds.forEach((recipientId) => {
-            // Check if the recipient is not in the list of connected calls
-            if (!this.connectedCalls[recipientId]) {
-                const call = this.peer.call(recipientId, this.localStream, {
-                    metadata: { recipients: recipientIds },
-                });
-                this.handleOutgoingCall(call, recipientIds);
-            }
+            const call = this.peer.call(recipientId, this.localStream, {
+                metadata: { recipients: recipientIds },
+            });
+            this.handleOutgoingCall(call, recipientIds);
         });
     }
 
     connectToPeers(peerIds) {
-
-        this.initLocalVideo()
-
         peerIds.forEach((peerId) => {
             if (peerId !== this.peer.id && !this.connections[peerId]) {
                 this.connections[peerId] = this.peer.connect(peerId, {
@@ -100,15 +91,6 @@ class Meeting {
                     console.log("Connected to peer:", peerId);
                 });
                 this.handleDataConnection(this.connections[peerId]);
-                this.connections[peerId].on("close", () => {
-                    console.log("Data connection closed");
-                    // Handle data connection closed event
-
-                    // Remove the call from the connected calls list
-                    if (this.connectedCalls[peerId]) {
-                        delete this.connectedCalls[peerId];
-                    }
-                });
             }
         });
     }
@@ -151,65 +133,79 @@ class Meeting {
     }
 
     handleIncomingCall(call) {
+        const callerId = call.peer;
+        const callerRecipients = call.metadata.recipients;
 
-        console.log("incoming call");
-
-        // Answer the incoming call and send local stream
-        const connectedRecipients = Object.keys(this.connectedCalls);
-        const isCallerConnected = connectedRecipients.includes(call.peer);
-
-        // Prompt for incoming call if the caller is not connected
-        if (!isCallerConnected) {
-            const confirmIncomingCall = confirm(`Incoming call from ${call.peer}. Do you want to accept?`);
-            if (!confirmIncomingCall) {
-                // Reject the call if the user declines
+        // Check if the caller is in the active recipients list
+        if (!this.activeRecipients.has(callerId)) {
+            // Caller is not in the active recipients list, prompt the user to accept the call
+            if (confirm(`Incoming call from ${callerId}. Do you want to accept the call?`)) {
+                // User accepted the call, add the caller to the active recipients list
+                this.activeRecipients.add(callerId);
+            } else {
+                // User declined the call, hang up the call and return
                 call.close();
                 return;
             }
         }
 
-        // Answer the incoming call and send local stream
+        // Answer the incoming call and send the local stream
         call.answer(this.localStream);
-
-        // Broadcast the call to all connected recipients
-        connectedRecipients.forEach((recipientId) => {
-            // Skip broadcasting the call to the caller itself
-            if (recipientId !== call.peer) {
-                const connectedCall = this.connectedCalls[recipientId];
-                if (connectedCall) {
-                    connectedCall.answer(this.localStream);
-                }
-            }
-        });
 
         // Add event listeners to handle the incoming call
         call.on("stream", (remoteStream) => {
-            // Handle the remote stream and add it to the video grid
-            const remoteVideoElement = this.createVideoElement(remoteStream);
-            const remoteVideoContainer = this.createVideoElementContainer(
-                remoteVideoElement,
-                call.peer // The user ID of the remote caller
-            );
-            this.addVideoStream(remoteVideoContainer);
+            // Check if the caller is already connected, if not, add the video
+            if (!this.connectedPeers.has(callerId)) {
+                // Handle the remote stream and add it to the video grid
+                const remoteVideoElement = this.createVideoElement(remoteStream);
+                const remoteVideoContainer = this.createVideoElementContainer(
+                    remoteVideoElement,
+                    callerId
+                );
+                this.addVideoStream(remoteVideoContainer);
+
+                // Add the user ID to the connectedPeers Set
+                this.connectedPeers.add(callerId);
+            }
         });
 
         call.on("close", () => {
             // Handle the call when it is closed (e.g., remote user hung up)
             // Remove the video element associated with the call
-            const remoteVideoElement = document.getElementById(call.peer);
+            const remoteVideoElement = document.getElementById(callerId);
             if (remoteVideoElement) {
                 this.videoGrid.removeChild(remoteVideoElement.parentNode);
-            }
 
-            // Remove the call from the connected calls list
-            delete this.connectedCalls[call.peer];
+                // Remove the user ID from the connectedPeers Set
+                this.connectedPeers.delete(callerId);
+            }
         });
 
-        // Send the list of all recipients in metadata
-        call.metadata = { recipients: call.metadata.recipients };
+        // Send the list of all recipients in metadata, including the caller and other recipients
+        const allRecipients = [...callerRecipients, this.userId]; // Add the caller and the current user to the recipients list
+        call.metadata = { recipients: allRecipients };
 
-        // Add the call to the connected calls list
-        this.connectedCalls[call.peer] = call;
+        // Initiate outgoing calls to all recipients in the metadata
+        this.connectToPeers(callerRecipients);
+
+        callerRecipients.forEach((recipientId) => {
+            // Check if the recipient is in the active recipients list
+            if (!this.activeRecipients.has(recipientId)) {
+                // Prompt the user to accept the call
+                if (confirm(`Outgoing call to ${recipientId}. Do you want to initiate the call?`)) {
+                    // User accepted the call, add the recipient to the active recipients list
+                    this.activeRecipients.add(recipientId);
+
+                    // Initiate the outgoing call
+                    const outgoingCall = this.peer.call(recipientId, this.localStream, {
+                        metadata: { recipients: allRecipients },
+                    });
+
+                    // Add event listeners to handle the outgoing call
+                    this.handleOutgoingCall(outgoingCall, allRecipients);
+                }
+            }
+        });
     }
 
     // Chat Section
@@ -311,10 +307,15 @@ class Meeting {
         });
     }
     addVideoStream(videoElement) {
-        this.videoGrid.appendChild(videoElement);
-        videoElement.addEventListener('loadedmetadata', () => {
-            videoElement.play();
-        });
+        if (!this.connectedPeers.has(videoElement.dataset.userId)) {
+            this.videoGrid.appendChild(videoElement);
+            videoElement.addEventListener('loadedmetadata', () => {
+                videoElement.play();
+            });
+            // Add the user ID to the connectedPeers Set
+            this.connectedPeers.add(videoElement.dataset.userId);
+          }
+       
     }
     createControlButtons() {
         this.toggleVideoBtn = this.createControlButton('Toggle Video');
@@ -476,6 +477,14 @@ class Meeting {
             const videoContainer = this.createVideoElementContainer(this.localVideo, this.userId)
             this.videoGrid.appendChild(videoContainer);
         }
+        if (!this.screenVideo) {
+            this.screenVideo = this.createVideoElement();
+            this.screenVideo.classList.add('screen-video');
+            this.screenVideo.classList.add('video-stream');
+            const videoContainer = this.createVideoElementContainer(this.screenVideo, this.userId)
+            this.videoGrid.appendChild(videoContainer);
+        }
+
     }
     initLocalVideo() {
         // Check if the browser supports getUserMedia
@@ -565,16 +574,18 @@ class Meeting {
         }
     }
     toggleLocalVideo() {
-        if (this.isLocalVideoEnabled) {
-            // Camera is currently on, so turn it off
-            this.stopLocalVideoStream();
-        } else {
-            // Camera is currently off, so turn it on
-            this.initLocalVideo();
-        }
-        this.isLocalVideoEnabled = !this.isLocalVideoEnabled; // Toggle the local video status
-    }
 
+        if (!this.localStream) {
+            console.log("no local stream starting");
+            this.initLocalVideo();
+            return;
+        }
+
+        const videoTracks = this.localStream.getVideoTracks(); // get video tracks only
+        videoTracks.forEach(track => {
+            track.enabled = !track.enabled; // toggle video tracks only
+        });
+    }
     async toggleScreenShare() {
         if (this.isSharingScreen) {
             this.stopScreenShare();
@@ -584,13 +595,12 @@ class Meeting {
     }
     async shareScreen() {
         try {
-            // Turn off the camera if it is on
-            if (this.isLocalVideoEnabled) {
-                this.stopLocalVideoStream();
-            }
-
             this.screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-            this.localVideo.srcObject = this.screenStream;
+            this.screenVideo.srcObject = this.screenStream;
+
+            this.screenStream.getTracks()[0].onended = () => {
+                this.stopScreenShare();
+            };
 
             this.isSharingScreen = true; // Update the flag
         } catch (error) {
@@ -599,27 +609,10 @@ class Meeting {
     }
     stopScreenShare() {
         if (this.screenStream) {
-            if (this.localStream) {
-
-                this.localStream.getTracks().forEach(track => track.stop());
-                this.localStream = null; // Clear the screen stream
-                this.localStream.srcObject = null;
-                this.isSharingScreen = false; // Update the flag
-            }
-            // Turn on the camera if it was on before sharing the screen
-            if (this.isLocalVideoEnabled) {
-                this.initLocalVideo();
-            }
-        }
-    }
-
-    stopLocalVideoStream() {
-        if (this.localStream && this.isLocalVideoEnabled) {
-            const videoTracks = this.localStream.getVideoTracks();
-            videoTracks.forEach(track => {
-                track.stop();
-            });
-            this.isLocalVideoEnabled = false;
+            this.screenStream.getTracks().forEach(track => track.stop());
+            this.screenStream = null; // Clear the screen stream
+            this.screenVideo.srcObject = null;
+            this.isSharingScreen = false; // Update the flag
         }
     }
 
