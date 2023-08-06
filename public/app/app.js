@@ -55,7 +55,7 @@ class Meeting {
 
         localStorage.setItem('userId', this.userId);
         // Create PeerConnectionManager with the user ID
-        this.peerConnectionManager = new PeerConnectionManager(userId);
+        this.peerConnectionManager = new PeerConnectionManager(this.userId);
         this.peer = this.peerConnectionManager.getPeer();
 
         this.peer.on('call', (call) => {
@@ -80,7 +80,7 @@ class Meeting {
 
     connectToPeers(peerIds) {
         peerIds.forEach((peerId) => {
-            if (peerId !== this.peer.id && !this.connections[peerId]) {
+            if (peerId !== this.userId && !this.connections[peerId]) {
                 this.connections[peerId] = this.peer.connect(peerId, {
                     serialization: "json",
                     metadata: { userId: this.peer.id },
