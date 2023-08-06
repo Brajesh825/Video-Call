@@ -74,6 +74,9 @@ class Meeting {
             const call = this.peer.call(recipientId, this.localStream, {
                 metadata: { recipients: recipientIds },
             });
+
+            console.log(call);
+
             this.handleOutgoingCall(call, recipientIds);
         });
     }
