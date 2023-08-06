@@ -41,6 +41,7 @@ class Meeting {
         this.isSharingScreen = false; // Add a flag for screen sharing status
         this.screenStream = null; // Add a placeholder for the screen stream
         this.isVideoStretched = false;
+        this.localStream = null;
 
         if (window.innerWidth <= 600) {
             this.chatWindow.classList.add('chat-hidden');
@@ -69,20 +70,70 @@ class Meeting {
 
     }
     // VideoCall Section
-    startGroupCall(recipientIds) {
-        // ... (previous code)
-
-        // Call each recipient using a mesh topology
-        recipientIds.forEach((recipientId) => {
-            if (recipientId !== this.peer.id) {
-                const call = this.peer.call(recipientId, this.localStream, {
-                    metadata: { recipients: [...this.remoteUserVideoIds] },
-                    scope: 'videoCall'
-                });
-                this.setupCallListeners(call, recipientId);
+    async startGroupCall(recipientIds) {
+        try {
+            if (!this.localStream) {
+                await this.initLocalVideo();
             }
+
+            this.callRecipients(recipientIds);
+        } catch (error) {
+            console.error('Error accessing webcam:', error);
+        }
+    }
+
+    callRecipients(recipientIds) {
+        const callOptions = { metadata: { scope: 'videoCall', recipients: [...recipientIds] } };
+        for (const peerId of recipientIds) {
+            if (peerId !== this.peer.id) {
+                const call = this.peer.call(peerId, this.localStream, callOptions);
+                this.handleCall(call);
+            }
+        }
+    }
+
+    async initLocalVideo() {
+        try {
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                this.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+
+                // Create a video element for the local stream
+                this.localVideo = this.createVideoElement(this.localStream, 'local-video');
+                this.localVideo.classList.add('local-video');
+                this.localVideo.classList.add('video-stream');
+                const videoContainer = this.createVideoElementContainer(this.localVideo);
+                this.videoGrid.appendChild(videoContainer);
+
+                this.localVideo.play(); // Play the local video stream
+
+                return Promise.resolve();
+            } else {
+                console.error('getUserMedia not supported');
+                return Promise.reject(new Error('getUserMedia not supported'));
+            }
+        } catch (error) {
+            console.error('Error accessing webcam:', error);
+            return Promise.reject(error);
+        }
+    }
+
+    handleCall(call) {
+        call.on('stream', (remoteStream) => {
+            const peerId = call.peer;
+            this.handleRemoteStream(peerId, remoteStream);
+        });
+
+        call.on('close', () => {
+            const peerId = call.peer;
+            this.removeRemoteVideo(peerId);
+        });
+
+        call.on('error', (error) => {
+            console.error('Call error:', error);
         });
     }
+
+
 
     connectToPeers(peerIds) {
         peerIds.forEach((peerId) => {
@@ -188,7 +239,6 @@ class Meeting {
             call.close();
         }
     }
-
 
     // Chat Section
     addSampleChatMessages() {
@@ -463,21 +513,25 @@ class Meeting {
         }
 
     }
-    initLocalVideo() {
-        // Check if the browser supports getUserMedia
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            // Get access to the user's webcam
-            navigator.mediaDevices.getUserMedia({ video: true })
-                .then(stream => {
-                    this.localStream = stream; // Store the local stream
-                    this.localVideo.srcObject = stream;
-                    this.localVideo.play(); // Play the local video stream
-                })
-                .catch(error => {
-                    console.error('Error accessing webcam:', error);
-                });
-        } else {
-            console.error('getUserMedia not supported');
+    async initLocalVideo() {
+        try {
+            if (!this.localStream) {
+                this.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+
+                // Create a video element for the local stream
+                this.localVideo = this.createVideoElement(this.localStream, 'local-video');
+                this.localVideo.classList.add('local-video');
+                this.localVideo.classList.add('video-stream');
+                const videoContainer = this.createVideoElementContainer(this.localVideo);
+                this.videoGrid.appendChild(videoContainer);
+
+                this.localVideo.play(); // Play the local video stream
+            }
+
+            return Promise.resolve();
+        } catch (error) {
+            console.error('Error accessing webcam:', error);
+            return Promise.reject(error);
         }
     }
     createVideoElement(src, className) {
@@ -563,32 +617,48 @@ class Meeting {
             track.enabled = !track.enabled; // toggle video tracks only
         });
     }
-    
+
     toggleScreenShare() {
         if (this.isSharingScreen) {
-          this.stopScreenShare();
+            this.stopScreenShare();
         } else {
-          this.shareScreen();
+            this.shareScreen();
         }
-      }
+    }
 
     async shareScreen() {
         try {
-            this.screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-            this.screenVideo.srcObject = this.screenStream;
+            if (!this.isSharingScreen) {
+                this.screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                // Stop the previous local video stream
+                this.localStream.getTracks().forEach(track => track.stop());
 
-            // Replace the following line to initiate a call for screen sharing
-            const recipientIds = [...this.remoteUserVideoIds];
-            for (const peerId of recipientIds) {
-                const call = this.peer.call(peerId, this.screenStream, { metadata: { scope: 'screenShare' } });
-                this.handleCall(call);
+                // Replace the local stream with the screen stream
+                this.localStream = this.screenStream;
+
+                // Create a video element for the screen stream
+                this.localVideo = this.createVideoElement(this.localStream, 'local-video');
+                this.localVideo.classList.add('local-video');
+                this.localVideo.classList.add('video-stream');
+                const videoContainer = this.createVideoElementContainer(this.localVideo);
+                this.videoGrid.appendChild(videoContainer);
+
+                this.localVideo.play(); // Play the local screen sharing stream
+
+                // Broadcast the screen sharing stream to other participants
+                const recipientIds = [...this.remoteUserVideoIds];
+                for (const peerId of recipientIds) {
+                    const call = this.peer.call(peerId, this.localStream, { metadata: { scope: 'screenShare' } });
+                    this.handleCall(call);
+                }
+
+                this.isSharingScreen = true;
             }
-
-            this.isSharingScreen = true; // Update the flag
         } catch (error) {
             console.error('Error sharing screen:', error);
         }
     }
+
 
     async startScreenShare() {
         try {
